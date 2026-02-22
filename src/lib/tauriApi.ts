@@ -8,6 +8,8 @@ import type {
   LogEntry,
   MetricsPayload,
   StateChangedPayload,
+  SshConnection,
+  SshConnectionConfig,
   TunnelConfig,
   TunnelInfo,
 } from "../types";
@@ -39,6 +41,30 @@ export const api = {
   stopTunnel: (id: string): Promise<void> => invoke("stop_tunnel", { id }),
   restartTunnel: (id: string): Promise<void> =>
     invoke("restart_tunnel", { id }),
+
+  // ── Connections ─────────────────────────────────────────────────────────────
+  getConnections: (): Promise<SshConnection[]> => invoke("get_connections"),
+
+  getConnection: (id: string): Promise<SshConnection> =>
+    invoke("get_connection", { id }),
+
+  addConnection: (config: SshConnectionConfig): Promise<SshConnection> =>
+    invoke("add_connection", { config }),
+
+  removeConnection: (id: string): Promise<void> =>
+    invoke("remove_connection", { id }),
+
+  updateConnection: (id: string, config: SshConnectionConfig): Promise<SshConnection> =>
+    invoke("update_connection", { id, config }),
+
+  launchConnection: (id: string): Promise<void> =>
+    invoke("launch_connection", { id }),
+
+  saveConnectionPassword: (id: string, password: string): Promise<void> =>
+    invoke("save_connection_password", { id, password }),
+
+  deleteConnectionPassword: (id: string): Promise<void> =>
+    invoke("delete_connection_password", { id }),
 } as const;
 
 // ─── Events ───────────────────────────────────────────────────────────────────

@@ -546,3 +546,233 @@ body { min-height: 100vh; overflow: hidden; }
 ::-webkit-scrollbar-thumb { background: var(--bg-4); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-focus); }
 
+/* ═══════════════════════════════════════════════════════════════
+   Tab Navigation
+   ═══════════════════════════════════════════════════════════════ */
+
+.header__tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.header__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-2);
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+  user-select: none;
+}
+.header__tab:hover:not(.header__tab--active) {
+  background: var(--bg-4);
+  color: var(--text);
+}
+.header__tab--active {
+  background: var(--bg-2);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.header__tab-count {
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-4);
+  border-radius: 8px;
+  padding: 0 5px;
+  line-height: 16px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Connection Cards
+   ═══════════════════════════════════════════════════════════════ */
+
+.conn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.conn-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+}
+.conn-card:hover {
+  border-color: var(--bg-4);
+}
+
+/* header row */
+.conn-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.conn-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.conn-card__server-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.conn-card__name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conn-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.conn-card__confirm-delete {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.conn-card__confirm-text {
+  font-size: 12px;
+  color: var(--red);
+}
+
+/* body */
+.conn-card__body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.conn-card__target { }
+.conn-card__ssh-target {
+  font-family: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
+  font-size: 12px;
+  color: var(--accent);
+  background: rgba(88,166,255,0.08);
+  padding: 3px 7px;
+  border-radius: 5px;
+  word-break: break-all;
+}
+.conn-card__meta-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.conn-card__meta-icon {
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+.conn-card__meta-text {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conn-card__description {
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+.conn-card__tags {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.conn-card__tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--bg-4);
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+/* footer */
+.conn-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border);
+}
+.conn-card__last-connected {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.conn-card__launch-btn {
+  margin-left: auto;
+}
+
+/* danger button variant used in connection card confirm-delete */
+.btn--danger {
+  background: rgba(248,81,73,.18);
+  color: var(--red);
+  border-color: rgba(248,81,73,.3);
+}
+.btn--danger:hover:not(:disabled) {
+  background: rgba(248,81,73,.28);
+}
+
+/* ── Password keychain badge (ConnectionCard) ──────────────────── */
+.conn-card__pwd-badge {
+  display: inline-flex;
+  align-items: center;
+  color: var(--green);
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Password row (AddConnectionModal) ────────────────────────── */
+.conn-password-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.conn-password-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--green);
+  background: rgba(63,185,80,.1);
+  border: 1px solid rgba(63,185,80,.25);
+  border-radius: 5px;
+  padding: 3px 8px;
+  flex-shrink: 0;
+}
+.conn-password-removing {
+  font-size: 12px;
+  color: var(--red);
+}
+.conn-password-replace {
+  flex: 1;
+  min-width: 0;
+}

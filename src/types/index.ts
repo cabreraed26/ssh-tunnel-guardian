@@ -138,3 +138,37 @@ export const DEFAULT_HEALTH_CHECK: HealthCheckConfig = {
   failureThreshold: 3,
   recoveryThreshold: 2,
 };
+
+// ─── SSH Connections ───────────────────────────────────────────────────────────
+
+export interface SshConnectionConfig {
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  identityFile?: string | null;
+  jumpHost?: string | null;
+  extraArgs?: string | null;
+  description?: string | null;
+  tags: string[];
+}
+
+export interface SshConnection {
+  id: string;
+  config: SshConnectionConfig;
+  lastConnectedAt?: number | null; // unix ms
+  hasPassword: boolean;
+}
+
+export type SshConnectionFormData = {
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  identityFile: string;
+  jumpHost: string;
+  extraArgs: string;
+  description: string;
+  tags: string; // comma-separated, parsed before submission
+  password: string;
+};

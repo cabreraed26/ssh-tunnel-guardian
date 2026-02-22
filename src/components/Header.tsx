@@ -1,11 +1,17 @@
-import { Plus, RefreshCw, Shield } from "lucide-react";
+import { Plus, RefreshCw, Shield, Network, Server } from "lucide-react";
+import clsx from "clsx";
 import { useTunnelStore } from "../store/tunnelStore";
 
+type Tab = "tunnels" | "connections";
+
 interface HeaderProps {
-  onAdd: () => void;
+  tab: Tab;
+  onTabChange: (t: Tab) => void;
+  onAddTunnel: () => void;
+  onAddConnection: () => void;
 }
 
-export function Header({ onAdd }: HeaderProps) {
+export function Header({ tab, onTabChange, onAddTunnel, onAddConnection }: HeaderProps) {
   const tunnels = useTunnelStore((s) => s.tunnels);
   const init = useTunnelStore((s) => s.init);
 
@@ -23,8 +29,29 @@ export function Header({ onAdd }: HeaderProps) {
         <span className="header__version">STG</span>
       </div>
 
+      {/* ── Tab switcher ─────────────────────────────────────────────── */}
+      <nav className="header__tabs">
+        <button
+          className={clsx("header__tab", { "header__tab--active": tab === "tunnels" })}
+          onClick={() => onTabChange("tunnels")}
+        >
+          <Network size={13} />
+          Tunnels
+          {tunnels.length > 0 && (
+            <span className="header__tab-count">{tunnels.length}</span>
+          )}
+        </button>
+        <button
+          className={clsx("header__tab", { "header__tab--active": tab === "connections" })}
+          onClick={() => onTabChange("connections")}
+        >
+          <Server size={13} />
+          Connections
+        </button>
+      </nav>
+
       <div className="header__stats">
-        {tunnels.length > 0 && (
+        {tab === "tunnels" && tunnels.length > 0 && (
           <>
             <span className="header__stat header__stat--healthy">
               {healthy} healthy
@@ -51,11 +78,19 @@ export function Header({ onAdd }: HeaderProps) {
         >
           <RefreshCw size={16} />
         </button>
-        <button className="btn btn--primary" onClick={onAdd}>
-          <Plus size={16} />
-          Add Tunnel
-        </button>
+        {tab === "tunnels" ? (
+          <button className="btn btn--primary" onClick={onAddTunnel}>
+            <Plus size={16} />
+            Add Tunnel
+          </button>
+        ) : (
+          <button className="btn btn--primary" onClick={onAddConnection}>
+            <Plus size={16} />
+            Add Connection
+          </button>
+        )}
       </div>
     </header>
   );
 }
+

@@ -1,13 +1,17 @@
 mod commands;
+mod connections;
 mod tunnel;
 
 use tauri::Manager;
 use commands::tunnel_commands::*;
+use commands::connection_commands::*;
 use tunnel::manager::TunnelManager;
+use connections::ConnectionsManager;
 
 /// Shared application state injected into Tauri commands.
 pub struct AppState {
     pub manager: TunnelManager,
+    pub connections: ConnectionsManager,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -17,23 +21,35 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             app.manage(AppState {
-                manager: TunnelManager::new(data_dir),
+                manager: TunnelManager::new(data_dir.clone()),
+                connections: ConnectionsManager::new(data_dir),
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // Read
+            // Tunnel — read
             get_tunnels,
             get_tunnel,
             get_tunnel_logs,
-            // Write
+            // Tunnel — write
             add_tunnel,
             remove_tunnel,
             update_tunnel,
-            // Lifecycle
+            // Tunnel — lifecycle
             start_tunnel,
             stop_tunnel,
             restart_tunnel,
+            // Connection — CRUD
+            get_connections,
+            get_connection,
+            add_connection,
+            remove_connection,
+            update_connection,
+            // Connection — launch
+            launch_connection,
+            // Connection — keychain
+            save_connection_password,
+            delete_connection_password,
         ])
         .build(tauri::generate_context!())
         .expect("error while running SSH Tunnel Guardian")
