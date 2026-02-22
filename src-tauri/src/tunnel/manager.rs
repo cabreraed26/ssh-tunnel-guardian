@@ -202,6 +202,19 @@ impl TunnelManager {
         Ok(())
     }
 
+    /// Signals all running tunnels to shut down without emitting Tauri events.
+    /// Called on app exit so SSH child processes don't outlive the application.
+    pub async fn stop_all_silent(&self) {
+        let mut tunnels = self.tunnels.lock().await;
+        for actor in tunnels.values_mut() {
+            if let Some(tx) = actor.shutdown_tx.take() {
+                let _ = tx.send(());
+            }
+            actor.info.state = TunnelState::Stopped;
+            actor.info.pid = None;
+        }
+    }
+
     pub async fn restart_tunnel(&self, app: &AppHandle, id: &str) -> Result<(), String> {
         self.stop_tunnel(app, id).await?;
         // Small delay so the OS can reclaim the port.

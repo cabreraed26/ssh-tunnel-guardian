@@ -15,10 +15,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            // Resolve the OS-appropriate app data directory, e.g.:
-            //   macOS  → ~/Library/Application Support/com.stg.app/
-            //   Linux  → ~/.local/share/com.stg.app/
-            //   Windows→ %APPDATA%\com.stg.app\
             let data_dir = app.path().app_data_dir()?;
             app.manage(AppState {
                 manager: TunnelManager::new(data_dir),
@@ -39,7 +35,15 @@ pub fn run() {
             stop_tunnel,
             restart_tunnel,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running SSH Tunnel Guardian");
+        .build(tauri::generate_context!())
+        .expect("error while running SSH Tunnel Guardian")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                // Kill all SSH child processes before the app exits so they
+                // don't keep holding local ports after Cmd+Q / window close.
+                let state = app_handle.state::<AppState>();
+                tauri::async_runtime::block_on(state.manager.stop_all_silent());
+            }
+        });
 }
 
