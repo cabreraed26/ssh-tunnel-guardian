@@ -38,11 +38,43 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running SSH Tunnel Guardian")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                // Kill all SSH child processes before the app exits so they
-                // don't keep holding local ports after Cmd+Q / window close.
-                let state = app_handle.state::<AppState>();
-                tauri::async_runtime::block_on(state.manager.stop_all_silent());
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                // Block the default exit — we'll call app_handle.exit(0)
+                // ourselves once every SSH process is confirmed dead.
+                api.prevent_exit();
+
+                let app = app_handle.clone();
+                std::thread::spawn(move || {
+                    let state = app.state::<AppState>();
+
+                    // 1. Send shutdown signals + SIGKILL all tracked PIDs.
+                    //    block_on is safe here because we're on a plain OS thread,
+                    //    not inside the tokio runtime.
+                    let killed_pids =
+                        tauri::async_runtime::block_on(state.manager.stop_all_silent());
+
+                    // 2. Wait until every killed PID has actually exited.
+                    //    `kill -0 <pid>` returns an error once the process is gone.
+                    //    We poll for up to 3 seconds to avoid hanging forever.
+                    let deadline = std::time::Instant::now()
+                        + std::time::Duration::from_secs(3);
+                    for pid in killed_pids {
+                        while std::time::Instant::now() < deadline {
+                            let alive = std::process::Command::new("kill")
+                                .args(["-0", &pid.to_string()])
+                                .status()
+                                .map(|s| s.success())
+                                .unwrap_or(false);
+                            if !alive {
+                                break;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                    }
+
+                    // 3. All SSH processes are gone — safe to exit.
+                    app.exit(0);
+                });
             }
         });
 }

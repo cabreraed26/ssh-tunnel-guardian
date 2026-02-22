@@ -5,6 +5,10 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{oneshot, Mutex};
 use uuid::Uuid;
 
+// std::sync::Mutex for the PID registry — must be accessible synchronously
+// from Drop without requiring the async runtime.
+use std::sync::Mutex as SyncMutex;
+
 use crate::tunnel::{
     error_classifier,
     health::tcp_check,
@@ -61,6 +65,24 @@ pub struct TunnelManager {
     logs: Arc<Mutex<HashMap<String, Vec<LogEntry>>>>,
     /// Directory where `tunnels.json` is stored.
     data_dir: PathBuf,
+    /// Synchronous registry of active SSH PIDs.
+    /// Using std::sync::Mutex so it can be read from Drop without async.
+    pid_registry: Arc<SyncMutex<HashMap<String, u32>>>,
+}
+
+/// When TunnelManager is dropped (app exit, Cmd+Q, SIGTERM, crash, …)
+/// kill every SSH process that is still registered. This is the last-resort
+/// safety net — normal shutdown also kills them, but Drop ensures no leaks.
+impl Drop for TunnelManager {
+    fn drop(&mut self) {
+        if let Ok(pids) = self.pid_registry.lock() {
+            for (_, pid) in pids.iter() {
+                let _ = std::process::Command::new("kill")
+                    .args(["-9", &pid.to_string()])
+                    .status();
+            }
+        }
+    }
 }
 
 impl TunnelManager {
@@ -77,6 +99,7 @@ impl TunnelManager {
             tunnels: Arc::new(Mutex::new(tunnels)),
             logs: Arc::new(Mutex::new(logs)),
             data_dir,
+            pid_registry: Arc::new(SyncMutex::new(HashMap::new())),
         }
     }
 
@@ -189,9 +212,17 @@ impl TunnelManager {
         let mut tunnels = self.tunnels.lock().await;
         let actor = tunnels.get_mut(id).ok_or_else(|| format!("Tunnel {id} not found"))?;
 
-        // Signal the supervisor to shut down.
         if let Some(tx) = actor.shutdown_tx.take() {
             let _ = tx.send(());
+        }
+        // Also kill the PID directly and clear the registry.
+        if let Some(pid) = actor.info.pid {
+            let _ = std::process::Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .status();
+            if let Ok(mut reg) = self.pid_registry.lock() {
+                reg.remove(id);
+            }
         }
         actor.info.state = TunnelState::Stopped;
         actor.info.pid = None;
@@ -204,15 +235,69 @@ impl TunnelManager {
 
     /// Signals all running tunnels to shut down without emitting Tauri events.
     /// Called on app exit so SSH child processes don't outlive the application.
-    pub async fn stop_all_silent(&self) {
+    /// Returns the list of PIDs that were killed so the caller can wait for them.
+    pub async fn stop_all_silent(&self) -> Vec<u32> {
         let mut tunnels = self.tunnels.lock().await;
-        for actor in tunnels.values_mut() {
+        let mut killed_pids: Vec<u32> = Vec::new();
+        for (id, actor) in tunnels.iter_mut() {
             if let Some(tx) = actor.shutdown_tx.take() {
                 let _ = tx.send(());
             }
+            if let Some(pid) = actor.info.pid {
+                let _ = std::process::Command::new("kill")
+                    .args(["-9", &pid.to_string()])
+                    .status();
+                killed_pids.push(pid);
+            }
             actor.info.state = TunnelState::Stopped;
             actor.info.pid = None;
+            // Clear from sync registry so Drop doesn't double-kill.
+            if let Ok(mut reg) = self.pid_registry.lock() {
+                reg.remove(id);
+            }
         }
+        killed_pids
+    }
+
+    /// Tries to free a local TCP port occupied by an orphaned `ssh` process.
+    ///
+    /// Uses `lsof` to find the PID holding the port and kills it only if the
+    /// process name contains "ssh" — so we never kill unrelated services.
+    /// Returns `true` if a process was killed, `false` otherwise.
+    fn try_free_port(port: u16) -> bool {
+        // lsof -ti tcp:<port>  →  prints PIDs one per line, no header
+        let output = std::process::Command::new("lsof")
+            .args(["-ti", &format!("tcp:{port}")])
+            .output();
+
+        let Ok(out) = output else { return false };
+        let pids: Vec<u32> = String::from_utf8_lossy(&out.stdout)
+            .split_whitespace()
+            .filter_map(|s| s.parse::<u32>().ok())
+            .collect();
+
+        if pids.is_empty() {
+            return false;
+        }
+
+        let mut killed = false;
+        for pid in pids {
+            // Only kill processes whose name contains "ssh".
+            let name_out = std::process::Command::new("ps")
+                .args(["-p", &pid.to_string(), "-o", "comm="])
+                .output();
+            let name = name_out
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_lowercase())
+                .unwrap_or_default();
+
+            if name.contains("ssh") {
+                let _ = std::process::Command::new("kill")
+                    .args(["-9", &pid.to_string()])
+                    .status();
+                killed = true;
+            }
+        }
+        killed
     }
 
     pub async fn restart_tunnel(&self, app: &AppHandle, id: &str) -> Result<(), String> {
@@ -230,6 +315,7 @@ impl TunnelManager {
     async fn spawn_supervisor(&self, app: AppHandle, id: String, initial_attempts: u32) {
         let tunnels_arc = self.tunnels.clone();
         let logs_arc = self.logs.clone();
+        let pid_registry_arc = self.pid_registry.clone();
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
 
         // Register the shutdown sender.
@@ -302,6 +388,11 @@ impl TunnelManager {
                         actor.info.pid = pid;
                     }
                 }
+                if let Some(p) = pid {
+                    if let Ok(mut reg) = pid_registry_arc.lock() {
+                        reg.insert(id.clone(), p);
+                    }
+                }
 
                 // Wait briefly for the process to potentially die immediately
                 // (e.g., port in use), then start health check polling.
@@ -322,6 +413,10 @@ impl TunnelManager {
 
                         // ── Process exits unexpectedly ────────────────────────
                         status = child.wait() => {
+                            // Process is gone — remove from PID registry.
+                            if let Ok(mut reg) = pid_registry_arc.lock() {
+                                reg.remove(&id);
+                            }
                             let exit_status = status.ok();
                             let stderr = collect_stderr(&mut child).await;
                             let kind = error_classifier::classify(&stderr);
@@ -336,9 +431,42 @@ impl TunnelManager {
                             let is_fatal = matches!(
                                 kind,
                                 TunnelErrorKind::AuthFailure
-                                    | TunnelErrorKind::PortInUse
                                     | TunnelErrorKind::PermissionDenied
                             );
+
+                            // ── Auto-recovery for port conflicts ─────────────
+                            // If the port is taken by an orphaned ssh process
+                            // (e.g. from a previous STG session), kill it and
+                            // let the normal reconnect loop retry immediately.
+                            if kind == TunnelErrorKind::PortInUse {
+                                let freed = Self::try_free_port(config.local_port);
+                                if freed {
+                                    Self::_push_log(
+                                        &logs_arc,
+                                        &id,
+                                        LogLevel::Info,
+                                        format!("Freed orphaned SSH process on port {}, retrying…", config.local_port),
+                                    ).await;
+                                    // Short pause then re-enter the outer loop.
+                                    tokio::select! {
+                                        _ = &mut shutdown_rx => return,
+                                        _ = tokio::time::sleep(tokio::time::Duration::from_millis(500)) => {}
+                                    }
+                                    break 'health_loop; // re-spawns SSH
+                                }
+                                // Port held by something other than ssh → fatal.
+                                let hint = format!(
+                                    "Port {} is in use by a non-SSH process: stop it manually",
+                                    config.local_port
+                                );
+                                Self::_push_log(&logs_arc, &id, LogLevel::Error, hint.clone()).await;
+                                Self::_update_actor(
+                                    &tunnels_arc, &id, TunnelState::Failed, &app,
+                                    Some(TunnelError { kind, message: msg, occurred_at: now_ms() }),
+                                    Some(hint),
+                                ).await;
+                                return;
+                            }
 
                             let current_attempts = {
                                 let tunnels = tunnels_arc.lock().await;
